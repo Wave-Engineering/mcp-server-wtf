@@ -63,13 +63,15 @@ detect_platform() {
 
 fetch() {
     local url="$1" dest="$2"
+    local tmp="${dest}.tmp.$$"
     if command -v curl &>/dev/null; then
-        curl -fsSL "$url" -o "$dest"
+        curl -fsSL "$url" -o "$tmp"
     elif command -v wget &>/dev/null; then
-        wget -q "$url" -O "$dest"
+        wget -q "$url" -O "$tmp"
     else
         die "Neither curl nor wget found"
     fi
+    mv -f "$tmp" "$dest"
 }
 
 # ---------------------------------------------------------------------------
