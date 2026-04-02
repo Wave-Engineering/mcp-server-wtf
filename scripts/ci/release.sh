@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Create a GitHub Release and attach all artifacts.
+# Usage: release.sh <tag>
+# Called by the release workflow after binaries are built.
+
+TAG="${1:?Usage: release.sh <tag>}"
+
+echo "=== Creating release ${TAG} ==="
+
+# Collect binaries from the download-artifact step.
+mkdir -p release-assets
+find artifacts -type f -name 'wtf-server-*' -exec cp {} release-assets/ \;
+find release-assets -type f -name 'wtf-server-*' -exec chmod +x {} \;
+
+# Copy skills and hook into release assets.
+cp scripts/hooks/wtf-post-tool-use.sh release-assets/
+cp scripts/install-remote.sh release-assets/
+for skill in wtf wtf-now wtf-happened wtf-imout; do
+    cp "skills/${skill}/SKILL.md" "release-assets/${skill}-SKILL.md"
+done
+
+# Create the release with auto-generated notes.
+gh release create "$TAG" release-assets/* \
+    --title "$TAG" \
+    --generate-notes
+
+echo "=== Release ${TAG} created ==="

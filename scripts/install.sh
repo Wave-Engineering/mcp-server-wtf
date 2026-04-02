@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# WTF (Why That Failed) — installer
+# WTF (Why That Failed) — Local Development Installer
 #
-# Idempotent installer for the WTF flight recorder system. Registers the
-# MCP server, installs skills, and configures the PostToolUse hook.
+# This installer is for LOCAL DEVELOPMENT of the WTF server. It registers
+# the MCP server pointing to this cloned repo, which is what you want when
+# working on the code.
+#
+# For end-user installation (no clone required), use the remote installer:
+#   curl -fsSL https://raw.githubusercontent.com/Wave-Engineering/mcp-server-wtf/main/scripts/install-remote.sh | bash
 #
 # Usage:
 #   ./scripts/install.sh              Install everything
