@@ -149,7 +149,7 @@ const TOOLS: Array<{
 // --- Background service lifecycle --------------------------------------------
 
 const queuePath = `${process.cwd()}/.wtf/hook-queue.jsonl`;
-const WTF_INDICATOR = "WTF ●";
+const WTF_INDICATOR = "☠️ WTF ●";
 let queueTimer: NodeJS.Timer | null = null;
 let classifierHandle: { stop: () => void } | null = null;
 let statuslineFile: string | null = null;
