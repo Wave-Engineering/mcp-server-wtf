@@ -242,10 +242,9 @@ function stopBackgroundServices(): void {
   removeIndicator();
 }
 
-// Clean up indicator if the server process exits.
-process.on("exit", () => {
-  removeIndicator();
-});
+// No process.on("exit") cleanup — a surviving indicator signals that the
+// previous session was mid-incident. The next MCP server boot detects it
+// and auto-resumes recording. Only wtf_imout removes the indicator.
 
 // --- Handlers ----------------------------------------------------------------
 
@@ -291,4 +290,12 @@ const transport = new StdioServerTransport();
 await server.connect(transport);
 
 // Background services (queue ingestion + classifier) start on first tool call,
-// not at boot. See ensureBackgroundServices() above.
+// not at boot — UNLESS a previous session left the indicator in the statusline
+// file, which means we were mid-incident when we got killed. Resume recording.
+statuslineFile = resolveStatuslineFile();
+if (statuslineFile) {
+  const existing = readIndicators(statuslineFile);
+  if (existing.includes(WTF_INDICATOR)) {
+    ensureBackgroundServices();
+  }
+}
