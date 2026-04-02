@@ -135,7 +135,7 @@ async function classifyViaBedrock(
 async function classifyViaCli(
   prompt: string
 ): Promise<ClassifierResult | null> {
-  const proc = Bun.spawn(["claude", "--model", "haiku", "--bare", "--print", "-p", prompt], {
+  const proc = Bun.spawn(["claude", "--model", "haiku", "--bare", "--print", "--no-session-persistence", "-p", prompt], {
     stdout: "pipe",
     stderr: "pipe",
   });

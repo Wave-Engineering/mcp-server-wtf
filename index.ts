@@ -20,7 +20,10 @@ import { handleNow } from "./tools/now";
 import { handleFreshell } from "./tools/freshell";
 import { handleHappened } from "./tools/happened";
 import { handleImout } from "./tools/imout";
-import { startQueueIngestion } from "./queue";
+import { writeFileSync, readFileSync, unlinkSync, existsSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { execSync } from "node:child_process";
+import { startQueueIngestion, processQueue } from "./queue";
 import { startClassifier } from "./classifier/worker";
 
 if (process.argv.includes("--help")) {
@@ -141,6 +144,74 @@ const TOOLS: Array<{
   },
 ];
 
+// --- Background service lifecycle --------------------------------------------
+
+const queuePath = `${process.cwd()}/.wtf/hook-queue.jsonl`;
+let queueTimer: NodeJS.Timer | null = null;
+let classifierHandle: { stop: () => void } | null = null;
+let sessionMarker: string | null = null;
+
+/** Resolve the project root, matching the agent identity hash convention. */
+function resolveProjectRoot(): string {
+  try {
+    return execSync("git rev-parse --show-toplevel", { encoding: "utf-8" }).trim();
+  } catch {
+    return process.cwd();
+  }
+}
+
+/** Resolve the session marker path from the agent identity file. */
+function resolveSessionMarker(): string | null {
+  const dirHash = createHash("md5").update(resolveProjectRoot()).digest("hex");
+  const agentFile = `/tmp/claude-agent-${dirHash}.json`;
+  if (!existsSync(agentFile)) return null;
+  try {
+    const identity = JSON.parse(readFileSync(agentFile, "utf-8"));
+    if (identity.dev_name) return `/tmp/wtf-recording-${identity.dev_name}`;
+  } catch {}
+  return null;
+}
+
+/** Start queue ingestion and classifier if not already running. */
+function ensureBackgroundServices(): void {
+  if (queueTimer === null) {
+    queueTimer = startQueueIngestion(queuePath);
+  }
+  if (classifierHandle === null) {
+    classifierHandle = startClassifier();
+  }
+  if (sessionMarker === null) {
+    sessionMarker = resolveSessionMarker();
+  }
+  if (sessionMarker) {
+    try { writeFileSync(sessionMarker, String(process.pid)); } catch {}
+  }
+}
+
+/** Flush the queue once, then stop ingestion and classifier. */
+function stopBackgroundServices(): void {
+  processQueue(queuePath);
+
+  if (queueTimer !== null) {
+    clearInterval(queueTimer);
+    queueTimer = null;
+  }
+  if (classifierHandle !== null) {
+    classifierHandle.stop();
+    classifierHandle = null;
+  }
+  if (sessionMarker) {
+    try { unlinkSync(sessionMarker); } catch {}
+  }
+}
+
+// Clean up marker if the server process exits.
+process.on("exit", () => {
+  if (sessionMarker) {
+    try { unlinkSync(sessionMarker); } catch {}
+  }
+});
+
 // --- Handlers ----------------------------------------------------------------
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
@@ -151,19 +222,23 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
 
   if (name === "wtf_now") {
+    ensureBackgroundServices();
     return handleNow(args as unknown as Parameters<typeof handleNow>[0]);
   }
 
   if (name === "wtf_freshell") {
+    ensureBackgroundServices();
     return handleFreshell(args as unknown as Parameters<typeof handleFreshell>[0]);
   }
 
   if (name === "wtf_happened") {
+    ensureBackgroundServices();
     return handleHappened(args as unknown as Parameters<typeof handleHappened>[0]);
   }
 
   if (name === "wtf_imout") {
     const result = handleImout();
+    stopBackgroundServices();
     return {
       content: [{ type: "text", text: JSON.stringify(result) }],
     };
@@ -180,9 +255,5 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 const transport = new StdioServerTransport();
 await server.connect(transport);
 
-// Start queue ingestion for PostToolUse hook entries.
-const queuePath = `${process.cwd()}/.wtf/hook-queue.jsonl`;
-startQueueIngestion(queuePath);
-
-// Start background classifier for unclassified entries.
-startClassifier();
+// Background services (queue ingestion + classifier) start on first tool call,
+// not at boot. See ensureBackgroundServices() above.
