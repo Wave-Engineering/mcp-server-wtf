@@ -7,23 +7,41 @@ classifier into a distilled timeline.
 
 ## Prerequisites
 
-- [Bun](https://bun.sh) runtime
 - [Claude Code](https://claude.ai/code) CLI (`claude`)
 - `jq` (JSON processor)
+- `curl` or `wget`
 - AWS credentials for Bedrock (optional — enables background classifier)
 
 ## Installation
 
 ```bash
+curl -fsSL https://raw.githubusercontent.com/Wave-Engineering/mcp-server-wtf/main/scripts/install-remote.sh | bash
+```
+
+This downloads a pre-compiled binary for your platform, installs skills and the
+PostToolUse hook, and registers the MCP server. No clone or runtime required.
+
+Verify the installation:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Wave-Engineering/mcp-server-wtf/main/scripts/install-remote.sh | bash -s -- --check
+```
+
+Install a specific version:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Wave-Engineering/mcp-server-wtf/main/scripts/install-remote.sh | bash -s -- --version v1.0.0
+```
+
+### Development Installation
+
+If you're working on the WTF server itself, clone the repo and use the local
+installer (requires [Bun](https://bun.sh)):
+
+```bash
 git clone https://github.com/Wave-Engineering/mcp-server-wtf.git
 cd mcp-server-wtf
 ./scripts/install.sh
-```
-
-Verify everything is configured:
-
-```bash
-./scripts/install.sh --check
 ```
 
 ## Quick Start
@@ -160,10 +178,16 @@ All runtime data lives in `.wtf/` relative to the project root (gitignored):
 
 ### MCP Server Registration
 
-The installer registers the server at user scope:
+The remote installer registers the compiled binary:
 
 ```bash
-claude mcp add --scope user --transport stdio wtf-server -- bun index.ts
+claude mcp add --scope user --transport stdio wtf-server -- ~/.local/bin/wtf-server
+```
+
+The development installer registers the Bun source directly:
+
+```bash
+claude mcp add --scope user --transport stdio wtf-server -- bun /path/to/mcp-server-wtf/index.ts
 ```
 
 ### Hook Configuration
@@ -185,12 +209,21 @@ The PostToolUse hook is configured in `~/.claude/settings.json`:
 
 ## Uninstall
 
+If installed via the remote installer:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Wave-Engineering/mcp-server-wtf/main/scripts/install-remote.sh | bash -s -- --uninstall
+```
+
+If installed from a local clone:
+
 ```bash
 ./scripts/install.sh --uninstall
 ```
 
-Removes the MCP server registration, skills, and hook configuration. The `.wtf/`
-data directory is preserved (it contains incident history). To remove it:
+Both remove the MCP server registration, skills, and hook configuration. The
+per-project `.wtf/` data directories are preserved (they contain incident
+history). To remove them:
 
 ```bash
 rm -rf .wtf/
