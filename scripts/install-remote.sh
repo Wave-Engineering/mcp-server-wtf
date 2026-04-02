@@ -155,8 +155,9 @@ do_install() {
     done
     echo ""
 
-    # Register MCP server
+    # Register MCP server (remove first for idempotency)
     info "Registering MCP server: $MCP_SERVER_NAME"
+    claude mcp remove "$MCP_SERVER_NAME" 2>/dev/null || true
     claude mcp add --scope user --transport stdio "$MCP_SERVER_NAME" \
         -- "${INSTALL_DIR}/wtf-server"
     ok "MCP server registered"
