@@ -20,9 +20,11 @@ import { handleNow } from "./tools/now";
 import { handleFreshell } from "./tools/freshell";
 import { handleHappened } from "./tools/happened";
 import { handleImout } from "./tools/imout";
-import { writeFileSync, readFileSync, unlinkSync, existsSync } from "node:fs";
+import { writeFileSync, readFileSync, renameSync, unlinkSync, existsSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { execSync } from "node:child_process";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { startQueueIngestion, processQueue } from "./queue";
 import { startClassifier } from "./classifier/worker";
 
@@ -147,9 +149,10 @@ const TOOLS: Array<{
 // --- Background service lifecycle --------------------------------------------
 
 const queuePath = `${process.cwd()}/.wtf/hook-queue.jsonl`;
+const WTF_INDICATOR = "WTF ●";
 let queueTimer: NodeJS.Timer | null = null;
 let classifierHandle: { stop: () => void } | null = null;
-let sessionMarker: string | null = null;
+let statuslineFile: string | null = null;
 
 /** Resolve the project root, matching the agent identity hash convention. */
 function resolveProjectRoot(): string {
@@ -160,16 +163,54 @@ function resolveProjectRoot(): string {
   }
 }
 
-/** Resolve the session marker path from the agent identity file. */
-function resolveSessionMarker(): string | null {
+/** Resolve the statusline indicator file path from the agent identity file. */
+function resolveStatuslineFile(): string | null {
   const dirHash = createHash("md5").update(resolveProjectRoot()).digest("hex");
   const agentFile = `/tmp/claude-agent-${dirHash}.json`;
   if (!existsSync(agentFile)) return null;
   try {
     const identity = JSON.parse(readFileSync(agentFile, "utf-8"));
-    if (identity.dev_name) return `/tmp/wtf-recording-${identity.dev_name}`;
+    if (identity.dev_name) return `/tmp/claude-statusline-${identity.dev_name}.json`;
   } catch {}
   return null;
+}
+
+/** Read the current indicators array from the statusline file. */
+function readIndicators(path: string): string[] {
+  try {
+    const data = JSON.parse(readFileSync(path, "utf-8"));
+    return Array.isArray(data.indicators) ? data.indicators : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Atomically write indicators to the statusline file (temp + rename). */
+function writeIndicators(path: string, indicators: string[]): void {
+  const tmp = join(tmpdir(), `.claude-statusline-${process.pid}.tmp`);
+  writeFileSync(tmp, JSON.stringify({ indicators }));
+  renameSync(tmp, path);
+}
+
+/** Add our indicator to the statusline file. */
+function addIndicator(): void {
+  if (!statuslineFile) return;
+  const indicators = readIndicators(statuslineFile);
+  if (!indicators.includes(WTF_INDICATOR)) {
+    indicators.unshift(WTF_INDICATOR);
+  }
+  writeIndicators(statuslineFile, indicators);
+}
+
+/** Remove our indicator from the statusline file. */
+function removeIndicator(): void {
+  if (!statuslineFile) return;
+  const indicators = readIndicators(statuslineFile).filter((i) => i !== WTF_INDICATOR);
+  if (indicators.length === 0) {
+    try { unlinkSync(statuslineFile); } catch {}
+  } else {
+    writeIndicators(statuslineFile, indicators);
+  }
 }
 
 /** Start queue ingestion and classifier if not already running. */
@@ -180,12 +221,10 @@ function ensureBackgroundServices(): void {
   if (classifierHandle === null) {
     classifierHandle = startClassifier();
   }
-  if (sessionMarker === null) {
-    sessionMarker = resolveSessionMarker();
+  if (statuslineFile === null) {
+    statuslineFile = resolveStatuslineFile();
   }
-  if (sessionMarker) {
-    try { writeFileSync(sessionMarker, String(process.pid)); } catch {}
-  }
+  addIndicator();
 }
 
 /** Flush the queue once, then stop ingestion and classifier. */
@@ -200,16 +239,12 @@ function stopBackgroundServices(): void {
     classifierHandle.stop();
     classifierHandle = null;
   }
-  if (sessionMarker) {
-    try { unlinkSync(sessionMarker); } catch {}
-  }
+  removeIndicator();
 }
 
-// Clean up marker if the server process exits.
+// Clean up indicator if the server process exits.
 process.on("exit", () => {
-  if (sessionMarker) {
-    try { unlinkSync(sessionMarker); } catch {}
-  }
+  removeIndicator();
 });
 
 // --- Handlers ----------------------------------------------------------------
