@@ -21,9 +21,14 @@ for skill in wtf wtf-now wtf-happened wtf-imout; do
     cp "skills/${skill}/SKILL.md" "release-assets/${skill}-SKILL.md"
 done
 
-# Create the release with auto-generated notes.
-gh release create "$TAG" release-assets/* \
-    --title "$TAG" \
-    --generate-notes
+# Create the release (or upload to an existing one).
+if gh release view "$TAG" &>/dev/null; then
+    echo "Release ${TAG} already exists — uploading assets"
+    gh release upload "$TAG" release-assets/* --clobber
+else
+    gh release create "$TAG" release-assets/* \
+        --title "$TAG" \
+        --generate-notes
+fi
 
 echo "=== Release ${TAG} created ==="
