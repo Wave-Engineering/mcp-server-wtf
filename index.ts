@@ -16,6 +16,7 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
+import { createLogger } from "@wave-engineering/mcp-logger";
 import { handleNow } from "./tools/now";
 import { handleFreshell } from "./tools/freshell";
 import { handleHappened } from "./tools/happened";
@@ -27,6 +28,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startQueueIngestion, processQueue } from "./queue";
 import { startClassifier } from "./classifier/worker";
+
+const log = createLogger("wtf");
 
 if (process.argv.includes("--help")) {
   console.log(`Usage: bun index.ts
@@ -217,6 +220,7 @@ function removeIndicator(): void {
 function ensureBackgroundServices(): void {
   if (queueTimer === null) {
     queueTimer = startQueueIngestion(queuePath);
+    log.info("state_change", { what: "queue_ingestion", to: "running" });
   }
   if (classifierHandle === null) {
     classifierHandle = startClassifier();
@@ -234,6 +238,7 @@ function stopBackgroundServices(): void {
   if (queueTimer !== null) {
     clearInterval(queueTimer);
     queueTimer = null;
+    log.info("state_change", { what: "queue_ingestion", to: "stopped" });
   }
   if (classifierHandle !== null) {
     classifierHandle.stop();
@@ -254,34 +259,44 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
 
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
+  const start = Date.now();
 
-  if (name === "wtf_now") {
-    ensureBackgroundServices();
-    return handleNow(args as unknown as Parameters<typeof handleNow>[0]);
-  }
+  try {
+    let result;
 
-  if (name === "wtf_freshell") {
-    ensureBackgroundServices();
-    return handleFreshell(args as unknown as Parameters<typeof handleFreshell>[0]);
-  }
+    if (name === "wtf_now") {
+      ensureBackgroundServices();
+      result = handleNow(args as unknown as Parameters<typeof handleNow>[0]);
+    } else if (name === "wtf_freshell") {
+      ensureBackgroundServices();
+      result = handleFreshell(args as unknown as Parameters<typeof handleFreshell>[0]);
+    } else if (name === "wtf_happened") {
+      ensureBackgroundServices();
+      result = handleHappened(args as unknown as Parameters<typeof handleHappened>[0]);
+    } else if (name === "wtf_imout") {
+      const imoutResult = handleImout();
+      stopBackgroundServices();
+      result = {
+        content: [{ type: "text", text: JSON.stringify(imoutResult) }],
+      };
+    } else {
+      return {
+        content: [{ type: "text", text: `Unknown tool: ${name}` }],
+        isError: true,
+      };
+    }
 
-  if (name === "wtf_happened") {
-    ensureBackgroundServices();
-    return handleHappened(args as unknown as Parameters<typeof handleHappened>[0]);
-  }
-
-  if (name === "wtf_imout") {
-    const result = handleImout();
-    stopBackgroundServices();
+    log.info("tool_call", { tool: name, ok: true, ms: Date.now() - start });
+    return result;
+  } catch (err) {
+    const elapsed = Date.now() - start;
+    const message = err instanceof Error ? err.message : String(err);
+    log.error("tool_call", { tool: name, ok: false, ms: elapsed, error: message });
     return {
-      content: [{ type: "text", text: JSON.stringify(result) }],
+      content: [{ type: "text", text: `Error in ${name}: ${message}` }],
+      isError: true,
     };
   }
-
-  return {
-    content: [{ type: "text", text: `Unknown tool: ${name}` }],
-    isError: true,
-  };
 });
 
 // --- Start -------------------------------------------------------------------
@@ -289,13 +304,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 const transport = new StdioServerTransport();
 await server.connect(transport);
 
+// Auto-resume detection happens below — log whether we auto-resume or cold-start.
+statuslineFile = resolveStatuslineFile();
+const existingIndicators = statuslineFile ? readIndicators(statuslineFile) : [];
+const autoResume = existingIndicators.includes(WTF_INDICATOR);
+
+log.info("startup", { version: "1.0.0", config: { queue_path: queuePath, auto_resume: autoResume } });
+
 // Background services (queue ingestion + classifier) start on first tool call,
 // not at boot — UNLESS a previous session left the indicator in the statusline
 // file, which means we were mid-incident when we got killed. Resume recording.
-statuslineFile = resolveStatuslineFile();
-if (statuslineFile) {
-  const existing = readIndicators(statuslineFile);
-  if (existing.includes(WTF_INDICATOR)) {
-    ensureBackgroundServices();
-  }
+if (autoResume) {
+  ensureBackgroundServices();
 }
