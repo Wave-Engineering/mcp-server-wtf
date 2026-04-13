@@ -7,6 +7,7 @@
  * the Bedrock SDK call fails.
  */
 
+import { createLogger } from "@wave-engineering/mcp-logger";
 import { getDb } from "../db";
 import { getClassifierClient, CLASSIFIER_MODEL } from "./client";
 import {
@@ -15,6 +16,8 @@ import {
   ACTION_TYPES,
   type ActionType,
 } from "./prompt";
+
+const log = createLogger("wtf");
 
 /** Options for the classifier polling loop. */
 export interface ClassifierOptions {
@@ -175,13 +178,13 @@ async function classifyEntry(
     const result = await classifyViaBedrock(prompt);
     if (result) return result;
   } catch (err) {
-    console.error("Bedrock classification failed, trying CLI fallback:", err);
+    log.warn("classifier", { method: "bedrock", error: String(err) }, "Bedrock failed, trying CLI fallback");
   }
 
   try {
     return await classifyViaCli(prompt);
   } catch (err) {
-    console.error("CLI fallback also failed:", err);
+    log.error("classifier", { method: "cli", error: String(err) }, "CLI fallback also failed");
     return null;
   }
 }
@@ -216,22 +219,18 @@ async function producer(
 
         if (newRows.length > 0) {
           classificationQueue.push(...newRows);
-          console.log(
-            `[PRODUCER] Queued ${newRows.length} entries (depth: ${classificationQueue.length})`
-          );
+          log.debug("queue_depth", { queued: newRows.length, depth: classificationQueue.length });
 
           // Emit warning if queue depth exceeds threshold
           if (classificationQueue.length >= MAX_QUEUE_DEPTH_WARNING) {
-            console.warn(
-              `[PRODUCER] ⚠️  Queue depth is ${classificationQueue.length} (threshold: ${MAX_QUEUE_DEPTH_WARNING}). System may be under heavy load.`
-            );
+            log.warn("queue_depth", { depth: classificationQueue.length, threshold: MAX_QUEUE_DEPTH_WARNING }, "Queue depth exceeds threshold");
           }
         }
       }
 
       await sleep(pollIntervalMs);
     } catch (err) {
-      console.error("[PRODUCER] Error in producer loop:", err);
+      log.error("classifier", { component: "producer", error: String(err) }, "Error in producer loop");
       await sleep(pollIntervalMs);
     }
   }
@@ -255,9 +254,7 @@ async function consumer(
       continue;
     }
 
-    console.log(
-      `[WORKER ${workerId}] Processing entry ${row.id} (queue depth: ${classificationQueue.length})`
-    );
+    log.debug("classifier", { worker_id: workerId, entry_id: row.id, queue_depth: classificationQueue.length });
 
     try {
       const prompt = buildClassifierPrompt({
@@ -274,9 +271,7 @@ async function consumer(
       const result = await classifyEntry(prompt);
 
       if (!result) {
-        console.error(
-          `[WORKER ${workerId}] Failed to classify entry ${row.id}, skipping.`
-        );
+        log.error("classifier", { worker_id: workerId, entry_id: row.id }, "Classification failed, skipping");
         await sleep(rateLimitMs);
         continue;
       }
@@ -300,7 +295,7 @@ async function consumer(
 
       await sleep(rateLimitMs);
     } catch (err) {
-      console.error(`[WORKER ${workerId}] Error processing entry ${row.id}:`, err);
+      log.error("classifier", { worker_id: workerId, entry_id: row.id, error: String(err) }, "Error processing entry");
       await sleep(rateLimitMs);
     }
   }
@@ -334,14 +329,12 @@ export function startClassifier(
     consumer(i, dbPath, rateLimitMs, isRunning);
   }
 
-  console.log(
-    `[CLASSIFIER] Started with ${WORKER_POOL_SIZE} workers (poll: ${pollIntervalMs}ms, rate-limit: ${rateLimitMs}ms)`
-  );
+  log.info("state_change", { what: "classifier", to: "running", workers: WORKER_POOL_SIZE, poll_ms: pollIntervalMs, rate_limit_ms: rateLimitMs });
 
   return {
     stop: () => {
       running = false;
-      console.log("[CLASSIFIER] Stopped");
+      log.info("state_change", { what: "classifier", to: "stopped" });
     },
   };
 }

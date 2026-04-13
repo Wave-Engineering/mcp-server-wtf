@@ -7,8 +7,11 @@
  */
 
 import { existsSync, renameSync, readFileSync, unlinkSync } from "node:fs";
+import { createLogger } from "@wave-engineering/mcp-logger";
 import { getDb } from "./db";
 import { getOrCreateActiveIncident } from "./tools/now";
+
+const log = createLogger("wtf");
 
 /** Shape of a single queued entry from the hook script. */
 interface QueueEntry {
@@ -55,7 +58,7 @@ export function processQueue(queuePath: string, dbPath?: string): void {
     try {
       entry = JSON.parse(line) as QueueEntry;
     } catch {
-      console.error(`Malformed queue entry, skipping: ${line}`);
+      log.warn("queue_ingest", { line: line.substring(0, 200) }, "Malformed queue entry, skipping");
       continue;
     }
 
