@@ -57,7 +57,7 @@ WTF (Why That Failed) is a flight recorder for incident troubleshooting sessions
 +-----------------------------------------------------------------+
 ```
 
-**Layer 1 -- Skills:** `/wtf` and `/wtf now` are user-facing skill definitions (Markdown files in `skills/`) that invoke MCP tools and inject behavioral instructions.
+**Layer 1 -- Skills:** `/wtf` and `/wtf now` are user-facing skill definitions that invoke MCP tools and inject behavioral instructions. Skills are delivered by [claudecode-workflow](https://github.com/Wave-Engineering/claudecode-workflow), not this repo.
 
 **Layer 2 -- PostToolUse Hook:** A shell script (`scripts/hooks/wtf-post-tool-use.sh`) that fires on every Claude Code tool call, extracts fields from the hook payload, truncates large values, and appends a JSON line to `.wtf/hook-queue.jsonl`.
 
@@ -571,12 +571,6 @@ scripts/
     test.sh                        # bun install --frozen-lockfile + bun test
   hooks/
     wtf-post-tool-use.sh           # PostToolUse hook (captures tool calls to JSONL queue)
-
-skills/                            # Skill definitions (Markdown files)
-  wtf/
-    SKILL.md                       # /wtf skill -- starts flight recorder mode
-  wtf-now/
-    SKILL.md                       # /wtf now skill -- adds manual journal entries
 
 docs/
   PRD-wtf-server.md                # Product requirements document
