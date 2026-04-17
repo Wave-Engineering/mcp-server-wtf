@@ -14,12 +14,9 @@ mkdir -p release-assets
 find artifacts -type f -name 'wtf-server-*' -exec cp {} release-assets/ \;
 find release-assets -type f -name 'wtf-server-*' -exec chmod +x {} \;
 
-# Copy skills and hook into release assets.
+# Copy hook and installer into release assets.
 cp scripts/hooks/wtf-post-tool-use.sh release-assets/
 cp scripts/install-remote.sh release-assets/
-for skill in wtf wtf-now wtf-happened wtf-imout; do
-    cp "skills/${skill}/SKILL.md" "release-assets/${skill}-SKILL.md"
-done
 
 # Create the release (or upload to an existing one).
 if gh release view "$TAG" &>/dev/null; then

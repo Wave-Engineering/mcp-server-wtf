@@ -23,7 +23,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 MCP_DIR="$PROJECT_DIR"
 HOOK_PATH="$PROJECT_DIR/scripts/hooks/wtf-post-tool-use.sh"
-SKILLS_DIR="$HOME/.claude/skills"
 SETTINGS_FILE="$HOME/.claude/settings.json"
 
 MCP_SERVER_NAME="wtf-server"
@@ -75,16 +74,6 @@ register_mcp() {
     ok "MCP server registered (scope: user)"
 }
 
-install_skills() {
-    info "Installing skills to $SKILLS_DIR"
-    mkdir -p "$SKILLS_DIR/wtf" "$SKILLS_DIR/wtf-now" "$SKILLS_DIR/wtf-happened" "$SKILLS_DIR/wtf-imout"
-    cp "$PROJECT_DIR/skills/wtf/SKILL.md" "$SKILLS_DIR/wtf/SKILL.md"
-    cp "$PROJECT_DIR/skills/wtf-now/SKILL.md" "$SKILLS_DIR/wtf-now/SKILL.md"
-    cp "$PROJECT_DIR/skills/wtf-happened/SKILL.md" "$SKILLS_DIR/wtf-happened/SKILL.md"
-    cp "$PROJECT_DIR/skills/wtf-imout/SKILL.md" "$SKILLS_DIR/wtf-imout/SKILL.md"
-    ok "Installed /wtf, /wtf now, /wtf happened, and /wtf imout skills"
-}
-
 configure_hook() {
     info "Configuring PostToolUse hook in $SETTINGS_FILE"
 
@@ -133,16 +122,12 @@ do_install() {
     register_mcp
     echo ""
 
-    install_skills
-    echo ""
-
     configure_hook
     echo ""
 
     echo "Installation Summary"
     echo "--------------------"
     ok "MCP server: $MCP_SERVER_NAME (bun $MCP_DIR/index.ts)"
-    ok "Skills: ~/.claude/skills/wtf/, ~/.claude/skills/wtf-now/, ~/.claude/skills/wtf-happened/"
     ok "Hook: PostToolUse → $HOOK_PATH"
     ok "Data dir: .wtf/ (created on first use)"
     echo ""
@@ -180,16 +165,6 @@ do_check() {
         fail "MCP server '$MCP_SERVER_NAME' not registered"
         issues=$((issues + 1))
     fi
-
-    # Skills
-    for skill in wtf wtf-now wtf-happened wtf-imout; do
-        if [[ -f "$SKILLS_DIR/$skill/SKILL.md" ]]; then
-            ok "Skill /$skill installed"
-        else
-            fail "Skill /$skill not found at $SKILLS_DIR/$skill/SKILL.md"
-            issues=$((issues + 1))
-        fi
-    done
 
     # Hook
     if [[ -f "$SETTINGS_FILE" ]] && \
@@ -236,18 +211,6 @@ do_uninstall() {
     else
         warn "MCP server '$MCP_SERVER_NAME' was not registered"
     fi
-
-    # Remove skills
-    info "Removing skills..."
-    for skill in wtf wtf-now wtf-happened wtf-imout; do
-        if [[ -f "$SKILLS_DIR/$skill/SKILL.md" ]]; then
-            rm "$SKILLS_DIR/$skill/SKILL.md"
-            rmdir "$SKILLS_DIR/$skill" 2>/dev/null || true
-            ok "Removed skill /$skill"
-        else
-            warn "Skill /$skill was not installed"
-        fi
-    done
 
     # Remove hook from settings
     info "Removing PostToolUse hook from settings..."
