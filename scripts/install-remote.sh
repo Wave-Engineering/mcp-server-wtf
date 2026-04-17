@@ -16,7 +16,6 @@ BASE_URL="https://github.com/${REPO}/releases"
 
 INSTALL_DIR="${WTF_INSTALL_DIR:-$HOME/.local/bin}"
 DATA_DIR="$HOME/.local/share/wtf-server"
-SKILLS_DIR="$HOME/.claude/skills"
 SETTINGS_FILE="$HOME/.claude/settings.json"
 HOOK_PATH="$DATA_DIR/hooks/wtf-post-tool-use.sh"
 
@@ -146,15 +145,6 @@ do_install() {
     ok "Hook installed to $HOOK_PATH"
     echo ""
 
-    # Download skills
-    info "Installing skills..."
-    for skill in wtf wtf-now wtf-happened wtf-imout; do
-        mkdir -p "$SKILLS_DIR/$skill"
-        fetch "$(resolve_url "${skill}-SKILL.md")" "$SKILLS_DIR/$skill/SKILL.md"
-        ok "Installed /$skill"
-    done
-    echo ""
-
     # Register MCP server (remove first for idempotency)
     info "Registering MCP server: $MCP_SERVER_NAME"
     claude mcp remove "$MCP_SERVER_NAME" 2>/dev/null || true
@@ -177,7 +167,6 @@ do_install() {
     echo "Installation Summary"
     echo "--------------------"
     ok "Binary: ${INSTALL_DIR}/wtf-server"
-    ok "Skills: ${SKILLS_DIR}/wtf/, wtf-now/, wtf-happened/, wtf-imout/"
     ok "Hook: PostToolUse → $HOOK_PATH"
     ok "Data dir: .wtf/ (created on first use, per project)"
     echo ""
@@ -242,18 +231,6 @@ do_uninstall() {
     else
         warn "MCP server was not registered"
     fi
-
-    # Remove skills
-    info "Removing skills..."
-    for skill in wtf wtf-now wtf-happened wtf-imout; do
-        if [[ -f "$SKILLS_DIR/$skill/SKILL.md" ]]; then
-            rm "$SKILLS_DIR/$skill/SKILL.md"
-            rmdir "$SKILLS_DIR/$skill" 2>/dev/null || true
-            ok "Removed /$skill"
-        else
-            warn "Skill /$skill not found"
-        fi
-    done
 
     # Remove hook from settings
     info "Removing PostToolUse hook..."
@@ -325,16 +302,6 @@ do_check() {
         fail "MCP server not registered"
         issues=$((issues + 1))
     fi
-
-    # Skills
-    for skill in wtf wtf-now wtf-happened wtf-imout; do
-        if [[ -f "$SKILLS_DIR/$skill/SKILL.md" ]]; then
-            ok "Skill /$skill installed"
-        else
-            fail "Skill /$skill missing"
-            issues=$((issues + 1))
-        fi
-    done
 
     # Hook
     if [[ -f "$SETTINGS_FILE" ]] && \

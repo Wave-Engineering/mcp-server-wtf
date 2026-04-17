@@ -18,8 +18,10 @@ classifier into a distilled timeline.
 curl -fsSL https://raw.githubusercontent.com/Wave-Engineering/mcp-server-wtf/main/scripts/install-remote.sh | bash
 ```
 
-This downloads a pre-compiled binary for your platform, installs skills and the
+This downloads a pre-compiled binary for your platform, installs the
 PostToolUse hook, and registers the MCP server. No clone or runtime required.
+Skills (`/wtf`, `/wtf now`, `/wtf happened`, `/wtf imout`) are delivered by
+[claudecode-workflow](https://github.com/Wave-Engineering/claudecode-workflow).
 
 Verify the installation:
 
@@ -221,7 +223,7 @@ If installed from a local clone:
 ./scripts/install.sh --uninstall
 ```
 
-Both remove the MCP server registration, skills, and hook configuration. The
+Both remove the MCP server registration and hook configuration. The
 per-project `.wtf/` data directories are preserved (they contain incident
 history). To remove them:
 
