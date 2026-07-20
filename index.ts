@@ -45,7 +45,7 @@ Flags:
 // --- Server setup ------------------------------------------------------------
 
 const server = new Server(
-  { name: "wtf-server", version: "1.0.0" },
+  { name: "wtf-server", version: "1.4.2" },
   { capabilities: { tools: {} } }
 );
 
@@ -309,7 +309,7 @@ statuslineFile = resolveStatuslineFile();
 const existingIndicators = statuslineFile ? readIndicators(statuslineFile) : [];
 const autoResume = existingIndicators.includes(WTF_INDICATOR);
 
-log.info("startup", { version: "1.0.0", config: { queue_path: queuePath, auto_resume: autoResume } });
+log.info("startup", { version: "1.4.2", config: { queue_path: queuePath, auto_resume: autoResume } });
 
 // Background services (queue ingestion + classifier) start on first tool call,
 // not at boot — UNLESS a previous session left the indicator in the statusline
