@@ -168,7 +168,7 @@ do_install() {
     echo "--------------------"
     ok "Binary: ${INSTALL_DIR}/wtf-server"
     ok "Hook: PostToolUse → $HOOK_PATH"
-    ok "Data dir: .wtf/ (created on first use, per project)"
+    ok "Data dir: .claude/wtf/ (created on first use, per project)"
     echo ""
     echo "Start a troubleshooting session:  /wtf"
     echo "Record an observation:            /wtf now <text>"
@@ -262,7 +262,7 @@ do_uninstall() {
 
     echo ""
     ok "Uninstall complete"
-    info "Per-project .wtf/ directories were not removed (contain incident history)."
+    info "Per-project .claude/wtf/ directories were not removed (contain incident history)."
     echo ""
 }
 

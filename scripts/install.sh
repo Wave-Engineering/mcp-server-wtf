@@ -129,7 +129,7 @@ do_install() {
     echo "--------------------"
     ok "MCP server: $MCP_SERVER_NAME (bun $MCP_DIR/index.ts)"
     ok "Hook: PostToolUse → $HOOK_PATH"
-    ok "Data dir: .wtf/ (created on first use)"
+    ok "Data dir: .claude/wtf/ (created on first use)"
     echo ""
     echo "Start a troubleshooting session:  /wtf"
     echo "Record an observation:            /wtf now <text>"
@@ -240,8 +240,8 @@ do_uninstall() {
 
     echo ""
     ok "Uninstall complete"
-    info "The .wtf/ data directory was not removed (contains incident history)."
-    info "To remove it: rm -rf .wtf/"
+    info "The .claude/wtf/ data directory was not removed (contains incident history)."
+    info "To remove it: rm -rf .claude/wtf/"
     echo ""
 }
 

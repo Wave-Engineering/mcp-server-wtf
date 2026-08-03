@@ -18,8 +18,26 @@ session_id=$(echo "$INPUT" | jq -r '.session_id // empty')
 agent_id=$(echo "$INPUT" | jq -r '.agent_id // empty')
 agent_type=$(echo "$INPUT" | jq -r '.agent_type // empty')
 
-# Determine queue file path.
-QUEUE_DIR="${CLAUDE_PROJECT_DIR:-.}/.wtf"
+# Determine queue file path (#29).
+#
+# THE HOOK MUST AGREE WITH THE SERVER. This script writes the queue; store.ts
+# resolves where the server READS it. Moving one without the other splits the
+# recorder in half — the hook appending to a file nothing consumes, silently,
+# with an incident that looks empty rather than broken.
+#
+# Same resolution order as store.ts::resolveStoreDir, deliberately duplicated
+# because a shell hook cannot import TypeScript:
+#   1. .claude/wtf exists  -> use it (new path always wins)
+#   2. legacy .wtf exists  -> use it (read/append compatibility, #29 deprecation)
+#   3. neither             -> create the new path
+PROJECT_ROOT="${CLAUDE_PROJECT_DIR:-.}"
+if [[ -d "${PROJECT_ROOT}/.claude/wtf" ]]; then
+  QUEUE_DIR="${PROJECT_ROOT}/.claude/wtf"
+elif [[ -d "${PROJECT_ROOT}/.wtf" ]]; then
+  QUEUE_DIR="${PROJECT_ROOT}/.wtf"
+else
+  QUEUE_DIR="${PROJECT_ROOT}/.claude/wtf"
+fi
 QUEUE_FILE="${QUEUE_DIR}/hook-queue.jsonl"
 DB_FILE="${QUEUE_DIR}/wtf.db"
 

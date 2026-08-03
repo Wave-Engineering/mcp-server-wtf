@@ -6,7 +6,7 @@
  * is implemented). Falls back to raw_entries with a notice.
  * Summary mode (default) caps output at 50 lines.
  *
- * Also generates a runbook skeleton at .wtf/runbook.md grouping
+ * Also generates a runbook skeleton at .claude/wtf/runbook.md grouping
  * distilled entries by action_type into Problem, Root Cause,
  * Resolution Steps, and Verification sections.
  */
@@ -15,6 +15,7 @@ import { getDb } from "../db";
 import { getOrCreateActiveIncident } from "./now";
 import { mkdirSync, existsSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
+import { storePath } from "../store.js";
 
 /** Arguments accepted by the wtf_happened tool. */
 export interface HappenedArgs {
@@ -228,7 +229,9 @@ export function handleHappened(
   }
 
   // --- Runbook generation ---
-  const runbookPath = options?.runbookPath ?? resolve(process.cwd(), ".wtf", "runbook.md");
+  // #29: .claude/wtf/runbook.md. create:true — we are about to write it.
+  const runbookPath =
+    options?.runbookPath ?? storePath("runbook.md", process.cwd(), { create: true });
   const runbookContent = buildRunbook(title, distilledRows);
   writeRunbook(runbookPath, runbookContent);
   parts.push(`\nRunbook written to ${runbookPath}`);

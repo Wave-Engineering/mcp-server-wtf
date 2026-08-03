@@ -28,6 +28,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startQueueIngestion, processQueue } from "./queue";
 import { startClassifier } from "./classifier/worker";
+import { storePath } from "./store.js";
 
 const log = createLogger("wtf");
 
@@ -126,7 +127,7 @@ const TOOLS: Array<{
   {
     name: "wtf_happened",
     description:
-      "Get a distilled timeline of the current troubleshooting incident. Writes a full runbook to .wtf/runbook.md.",
+      "Get a distilled timeline of the current troubleshooting incident. Writes a full runbook to .claude/wtf/runbook.md.",
     inputSchema: {
       type: "object" as const,
       properties: {
@@ -151,7 +152,8 @@ const TOOLS: Array<{
 
 // --- Background service lifecycle --------------------------------------------
 
-const queuePath = `${process.cwd()}/.wtf/hook-queue.jsonl`;
+// #29: under .claude/ so an in-flight queue survives container replacement.
+const queuePath = storePath("hook-queue.jsonl", process.cwd(), { create: true });
 const WTF_INDICATOR = "☠️ WTF ●";
 let queueTimer: NodeJS.Timer | null = null;
 let classifierHandle: { stop: () => void } | null = null;

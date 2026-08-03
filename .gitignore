@@ -7,3 +7,15 @@ dist/
 *.db-wal
 *.db-shm
 *.tsbuildinfo
+
+# Flight-recorder store (#29). It moved from the project root into .claude/ so
+# it survives container replacement — `.claude/` is host-backed under the
+# cut-over, the project root is not.
+#
+# This needs its OWN rule: `.claude/` is not universally ignored (cc-workflow
+# tracks .claude/plans), so without this line recorder output — including
+# whatever a timeline captured from a live session — becomes stageable.
+.claude/wtf/
+
+# Legacy location, still read during the deprecation window (#29).
+.wtf/

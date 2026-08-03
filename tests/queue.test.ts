@@ -162,7 +162,10 @@ describe("queue ingestion", () => {
       agent_type: "sub",
     });
 
-    const outputDir = join(tempDir, ".wtf");
+    // #29: the store moved into .claude/ so it survives container replacement.
+    // These drive the REAL hook script, so they follow the hook's resolution —
+    // a fresh project has no legacy .wtf/, so the new path is chosen.
+    const outputDir = join(tempDir, ".claude", "wtf");
     const outputFile = join(outputDir, "hook-queue.jsonl");
 
     const proc = Bun.spawn(["bash", scriptPath], {
@@ -210,7 +213,10 @@ describe("queue ingestion", () => {
       agent_type: "",
     });
 
-    const outputDir = join(tempDir, ".wtf");
+    // #29: the store moved into .claude/ so it survives container replacement.
+    // These drive the REAL hook script, so they follow the hook's resolution —
+    // a fresh project has no legacy .wtf/, so the new path is chosen.
+    const outputDir = join(tempDir, ".claude", "wtf");
     const outputFile = join(outputDir, "hook-queue.jsonl");
 
     const proc = Bun.spawn(["bash", scriptPath], {
