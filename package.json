@@ -1,6 +1,6 @@
 {
   "name": "mcp-server-wtf",
-  "version": "1.4.2",
+  "version": "1.5.0",
   "description": "Flight recorder for incident troubleshooting inside Claude Code",
   "type": "module",
   "scripts": {
