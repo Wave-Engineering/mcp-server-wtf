@@ -34,7 +34,7 @@ WTF (Why That Failed) is a flight recorder for incident troubleshooting sessions
 |  |  Tools: wtf_now | wtf_happened | wtf_freshell             |  |
 |  |                                                           |  |
 |  |  +------------------------------------+                   |  |
-|  |  |       SQLite DB (.wtf/wtf.db)      |                   |  |
+|  |  |       SQLite DB (.claude/wtf/wtf.db)      |                   |  |
 |  |  |  +----------+  +----------------+  |                   |  |
 |  |  |  |raw_entries|  |distilled_entries|  |                   |  |
 |  |  |  +----------+  +----------------+  |                   |  |
@@ -53,13 +53,13 @@ WTF (Why That Failed) is a flight recorder for incident troubleshooting sessions
 |  |  Writes to distilled_entries         |                       |
 |  +-------------------------------------+                       |
 |                                                                 |
-|  On disk: .wtf/wtf.db, .wtf/runbook.md, .wtf/hook-queue.jsonl  |
+|  On disk: .claude/wtf/wtf.db, .claude/wtf/runbook.md, .claude/wtf/hook-queue.jsonl  |
 +-----------------------------------------------------------------+
 ```
 
 **Layer 1 -- Skills:** `/wtf` and `/wtf now` are user-facing skill definitions that invoke MCP tools and inject behavioral instructions. Skills are delivered by [claudecode-workflow](https://github.com/Wave-Engineering/claudecode-workflow), not this repo.
 
-**Layer 2 -- PostToolUse Hook:** A shell script (`scripts/hooks/wtf-post-tool-use.sh`) that fires on every Claude Code tool call, extracts fields from the hook payload, truncates large values, and appends a JSON line to `.wtf/hook-queue.jsonl`.
+**Layer 2 -- PostToolUse Hook:** A shell script (`scripts/hooks/wtf-post-tool-use.sh`) that fires on every Claude Code tool call, extracts fields from the hook payload, truncates large values, and appends a JSON line to `.claude/wtf/hook-queue.jsonl`.
 
 **Layer 3 -- MCP Server:** A Bun + TypeScript MCP server (`index.ts`) that exposes three tools over stdio transport, manages the SQLite database, ingests the hook queue, and runs a background classifier.
 
@@ -82,7 +82,7 @@ PostToolUse hook fires (scripts/hooks/wtf-post-tool-use.sh)
     |  Truncates tool_input and tool_response to 4KB each
     |
     v
-Appends JSON line to .wtf/hook-queue.jsonl
+Appends JSON line to .claude/wtf/hook-queue.jsonl
     |
     v
 MCP server polls queue file every 2 seconds (queue.ts)
@@ -95,7 +95,7 @@ INSERT INTO raw_entries with gen_type = 'captured'
     |  Deletes the processing file after successful ingestion
     |
     v
-raw_entries row stored in .wtf/wtf.db
+raw_entries row stored in .claude/wtf/wtf.db
 ```
 
 ### 3.2 Enrichment Pipeline
@@ -132,7 +132,7 @@ INSERT INTO distilled_entries
     |  Sets is_noise = 1 if action_type == 'noise'
     |
     v
-distilled_entries row stored in .wtf/wtf.db
+distilled_entries row stored in .claude/wtf/wtf.db
 ```
 
 ### 3.3 Retrieval Flow
@@ -162,7 +162,7 @@ Return formatted Markdown with header:
 
 ## 4. SQLite Schema
 
-The database lives at `.wtf/wtf.db` relative to the project root. It is opened in **WAL mode** (`PRAGMA journal_mode=WAL`) to support concurrent read/write access from the MCP server and background classifier. Schema initialization happens on first connection via `db.ts`.
+The database lives at `.claude/wtf/wtf.db` relative to the project root. It is opened in **WAL mode** (`PRAGMA journal_mode=WAL`) to support concurrent read/write access from the MCP server and background classifier. Schema initialization happens on first connection via `db.ts`.
 
 ### 4.1 incidents
 
@@ -490,14 +490,14 @@ This prevents oversized entries from commands with large output (e.g., `cat` on 
 
 ### 7.3 Queue File Format
 
-The hook appends one JSON object per line to `.wtf/hook-queue.jsonl` (JSONL format):
+The hook appends one JSON object per line to `.claude/wtf/hook-queue.jsonl` (JSONL format):
 
 ```jsonl
 {"tool_name":"Bash","tool_input":"curl http://localhost:8080/health","tool_response":"{\"status\":\"ok\"}","tool_use_id":"toolu_01ABC","session_id":"sess_xyz","agent_id":"","agent_type":""}
 {"tool_name":"Read","tool_input":"/var/log/app.log","tool_response":"ERROR: connection refused","tool_use_id":"toolu_02DEF","session_id":"sess_xyz","agent_id":"","agent_type":""}
 ```
 
-The queue file path is `${CLAUDE_PROJECT_DIR:-.}/.wtf/hook-queue.jsonl`. The directory is created if it does not exist.
+The queue file path is `${CLAUDE_PROJECT_DIR:-.}/.claude/wtf/hook-queue.jsonl (falling back to the legacy ${CLAUDE_PROJECT_DIR:-.}/.wtf/ during the #29 deprecation window)`. The directory is created if it does not exist.
 
 ### 7.4 Atomic Rename Ingestion
 
@@ -533,7 +533,7 @@ The hook is registered in `~/.claude/settings.json`:
 ## 8. File Layout
 
 ```
-.wtf/                              # Runtime data directory (gitignored)
+.claude/wtf/                       # Runtime data directory (gitignored, #29)
   wtf.db                           # SQLite database (WAL mode)
   wtf.db-wal                       # WAL file (SQLite-managed)
   wtf.db-shm                       # Shared memory file (SQLite-managed)
@@ -593,8 +593,8 @@ The following values are tunable in the codebase. All defaults are set in the so
 | AWS region | `us-east-1` | `classifier/client.ts` `getClassifierClient()` | AWS region for Bedrock API calls (overridable via `AWS_REGION` env var) |
 | Hook truncation limit | 4,096 bytes | `scripts/hooks/wtf-post-tool-use.sh` `[:4096]` | Maximum size for `tool_input` and `tool_response` in hook entries |
 | Summary line cap | 50 lines | `tools/happened.ts` `SUMMARY_LINE_CAP` | Maximum lines returned by `wtf_happened` in summary mode |
-| Database path | `.wtf/wtf.db` | `db.ts` `getDb()` default | SQLite database file location (relative to `process.cwd()`) |
-| Queue file path | `.wtf/hook-queue.jsonl` | `index.ts` `queuePath` | JSONL queue file location (relative to `process.cwd()`) |
+| Database path | `.claude/wtf/wtf.db` | `db.ts` `getDb()` default | SQLite database file location (relative to `process.cwd()`) |
+| Queue file path | `.claude/wtf/hook-queue.jsonl` | `index.ts` `queuePath` | JSONL queue file location (relative to `process.cwd()`) |
 
 ---
 

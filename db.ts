@@ -9,6 +9,7 @@
 import { Database } from "bun:sqlite";
 import { mkdirSync, existsSync } from "node:fs";
 import { dirname } from "node:path";
+import { storePath } from "./store.js";
 
 let _db: Database | null = null;
 let _dbPath: string | null = null;
@@ -22,7 +23,7 @@ let _dbPath: string | null = null;
  * CREATE TABLE IF NOT EXISTS does not alter existing tables, so databases
  * created before this change will reject 'suspended' values.
  *
- * Migration path: Delete existing .wtf/wtf.db file to recreate with new schema.
+ * Migration path: Delete existing .claude/wtf/wtf.db file to recreate with new schema.
  * All historical data will be lost, but this is acceptable for a flight recorder
  * system focused on current troubleshooting sessions.
  */
@@ -78,12 +79,15 @@ function initSchema(db: Database): void {
  * Open (or return the existing) SQLite database connection.
  *
  * @param dbPath - Path to the database file, or ":memory:" for an
- *                 in-memory database.  Defaults to `.wtf/wtf.db`
- *                 relative to the project root.
+ *                 in-memory database.  Defaults to `.claude/wtf/wtf.db`
+ *                 relative to the project root, with a read-fallback to the
+ *                 legacy `.wtf/` location (#29).
  * @returns The singleton Database instance.
  */
 export function getDb(dbPath?: string): Database {
-  const resolvedPath = dbPath ?? `${process.cwd()}/.wtf/wtf.db`;
+  // #29: the store lives under .claude/ so it survives container replacement.
+  // create:true — this is a WRITE path; the db is about to be opened here.
+  const resolvedPath = dbPath ?? storePath("wtf.db", process.cwd(), { create: true });
 
   // Return the cached singleton if the path matches.
   if (_db !== null && _dbPath === resolvedPath) {
