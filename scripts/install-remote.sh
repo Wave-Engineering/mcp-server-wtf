@@ -22,6 +22,33 @@ HOOK_PATH="$DATA_DIR/hooks/wtf-post-tool-use.sh"
 MCP_SERVER_NAME="wtf-server"
 VERSION=""
 
+# A jq helper shared by every place that asks "is our hook already registered?".
+# Defined ONCE because it is used in three of them (configure_hook, do_check,
+# do_uninstall) and they must agree: an installer, a verifier and an uninstaller
+# that disagree about what counts as "our hook" produce a hook registered twice,
+# a false "not found", and an entry left pointing at a deleted file — all three
+# of which have happened here.
+#
+# Identity is the SCRIPT, not the spelling. Three things obscure it:
+#   - `~/…`, `$HOME/…` and `${HOME}/…` are the same file as the absolute path;
+#   - a command may carry arguments after the script;
+#   - Oak-and-Wave rewrites hook commands as `[ -x <path> ] || exit 0; <path>` so
+#     that a hook missing from an older image is inert rather than fatal
+#     (cc-workflow#1107). Keying on the wrapper sees `[` as the script and calls
+#     a guarded and a bare spelling different hooks — which is exactly the
+#     duplicate-registration bug this file exists to fix, one layer out.
+read -r -d '' JQ_RESOLVED <<'JQ' || true
+def resolved($home):
+    (. // "")
+    | sub("^\\[ -x [^]]* \\] \\|\\| exit 0;\\s*"; "")
+    | sub("^\\s+"; "")
+    | (split(" ")[0] // "")
+    | if startswith("~/") then $home + .[1:]
+      elif startswith("${HOME}/") then $home + .[7:]
+      elif startswith("$HOME/") then $home + .[5:]
+      else . end;
+JQ
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -192,11 +219,19 @@ configure_hook() {
     hook_entry=$(jq -n --arg cmd "$HOOK_PATH" \
         '{"matcher":"","hooks":[{"type":"command","command":$cmd}]}')
 
+    # COMPARE RESOLVED PATHS, NOT RAW STRINGS. HOOK_PATH is absolute (built from
+    # $HOME); a template-seeded settings file spells the same hook
+    # `~/.local/share/...`. A string compare called those two different hooks and
+    # registered the recorder TWICE, firing twice on every tool use.
     local updated
-    updated=$(jq --argjson entry "$hook_entry" '
+    updated=$(jq --argjson entry "$hook_entry" --arg home "$HOME" "$JQ_RESOLVED"'
         .hooks //= {} |
         .hooks.PostToolUse //= [] |
-        if (.hooks.PostToolUse | map(.hooks // [] | map(select(.command == $entry.hooks[0].command))) | flatten | length) > 0
+        if (.hooks.PostToolUse
+              | map(.hooks // [] | map(select(
+                    (.command | resolved($home)) == ($entry.hooks[0].command | resolved($home))
+                )))
+              | flatten | length) > 0
         then .
         else .hooks.PostToolUse += [$entry]
         end
@@ -235,12 +270,19 @@ do_uninstall() {
     # Remove hook from settings
     info "Removing PostToolUse hook..."
     if [[ -f "$SETTINGS_FILE" ]]; then
+        # Resolve here too, and for the sharpest reason of the three: the data dir
+        # is deleted a few lines below. A raw-string compare leaves a ~-spelled
+        # entry in place, pointing at the script that just went away, so every
+        # tool call afterwards prints
+        #   /bin/sh: 1: …/wtf-post-tool-use.sh: not found
+        # An uninstall that disagrees with its own installer about what it
+        # registered does not just fail to clean up — it leaves the user broken.
         local updated
-        updated=$(jq --arg cmd "$HOOK_PATH" '
+        updated=$(jq --arg cmd "$HOOK_PATH" --arg home "$HOME" "$JQ_RESOLVED"'
             if .hooks.PostToolUse then
                 .hooks.PostToolUse |= map(
-                    if (.hooks // [] | map(select(.command == $cmd)) | length) > 0
-                    then .hooks |= map(select(.command != $cmd))
+                    if (.hooks // [] | map(select((.command | resolved($home)) == ($cmd | resolved($home)))) | length) > 0
+                    then .hooks |= map(select((.command | resolved($home)) != ($cmd | resolved($home))))
                     else .
                     end
                 ) |
@@ -303,10 +345,16 @@ do_check() {
         issues=$((issues + 1))
     fi
 
-    # Hook
+    # Hook. Resolves paths for the same reason configure_hook does — and it matters
+    # MORE here: a raw-string compare made this report "hook not found" on a host
+    # where the hook IS configured, just spelled with a `~`. A verifier that
+    # disagrees with the installer about what "installed" means is worse than no
+    # verifier, because it sends people looking for a problem that is not there.
     if [[ -f "$SETTINGS_FILE" ]] && \
-       jq -e --arg cmd "$HOOK_PATH" \
-          '.hooks.PostToolUse // [] | map(.hooks // [] | map(select(.command == $cmd))) | flatten | length > 0' \
+       jq -e --arg cmd "$HOOK_PATH" --arg home "$HOME" "$JQ_RESOLVED"'
+          .hooks.PostToolUse // []
+            | map(.hooks // [] | map(select((.command | resolved($home)) == ($cmd | resolved($home)))))
+            | flatten | length > 0' \
           "$SETTINGS_FILE" &>/dev/null; then
         ok "PostToolUse hook configured"
     else
@@ -328,17 +376,24 @@ do_check() {
 # Main
 # ---------------------------------------------------------------------------
 
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        --uninstall) ACTION="uninstall"; shift ;;
-        --check)     ACTION="check"; shift ;;
-        --version)   VERSION="${2:?--version requires a tag}"; shift 2 ;;
-        *)           die "Unknown flag: $1 (use --uninstall, --check, or --version <tag>)" ;;
-    esac
-done
+# Only dispatch when EXECUTED — see install.sh for why sourcing must be inert.
+# `curl … | bash` reads this script from STDIN, where BASH_SOURCE is unset —
+# under `set -u` a bare expansion aborts before dispatch, and the documented
+# install path is exactly that pipe. Default to $0 so the piped case dispatches
+# and a sourced caller (BASH_SOURCE = this file, $0 = the caller) still does not.
+if [[ "${BASH_SOURCE[0]:-$0}" == "${0}" ]]; then
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --uninstall) ACTION="uninstall"; shift ;;
+            --check)     ACTION="check"; shift ;;
+            --version)   VERSION="${2:?--version requires a tag}"; shift 2 ;;
+            *)           die "Unknown flag: $1 (use --uninstall, --check, or --version <tag>)" ;;
+        esac
+    done
 
-case "${ACTION:-install}" in
-    install)   do_install ;;
-    uninstall) do_uninstall ;;
-    check)     do_check ;;
-esac
+    case "${ACTION:-install}" in
+        install)   do_install ;;
+        uninstall) do_uninstall ;;
+        check)     do_check ;;
+    esac
+fi

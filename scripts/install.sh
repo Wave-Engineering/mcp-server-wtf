@@ -27,6 +27,28 @@ SETTINGS_FILE="$HOME/.claude/settings.json"
 
 MCP_SERVER_NAME="wtf-server"
 
+# A jq helper shared by every place that asks "is our hook already registered?".
+# Defined ONCE because install, check and uninstall must agree: three predicates
+# that disagree about what counts as "our hook" produce a hook registered twice,
+# a false "not found", and an entry left pointing at a deleted file.
+#
+# Identity is the SCRIPT, not the spelling — `~/…`, `$HOME/…` and `${HOME}/…` name
+# the same file as the absolute path, a command may carry arguments, and
+# Oak-and-Wave rewrites hook commands as `[ -x <path> ] || exit 0; <path>` so a
+# hook absent from an older image is inert rather than fatal (cc-workflow#1107).
+# Keying on that wrapper sees `[` as the script.
+read -r -d '' JQ_RESOLVED <<'JQ' || true
+def resolved($home):
+    (. // "")
+    | sub("^\\[ -x [^]]* \\] \\|\\| exit 0;\\s*"; "")
+    | sub("^\\s+"; "")
+    | (split(" ")[0] // "")
+    | if startswith("~/") then $home + .[1:]
+      elif startswith("${HOME}/") then $home + .[7:]
+      elif startswith("$HOME/") then $home + .[5:]
+      else . end;
+JQ
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -90,13 +112,24 @@ configure_hook() {
     hook_entry=$(jq -n --arg cmd "$HOOK_PATH" '{"matcher":"","hooks":[{"type":"command","command":$cmd}]}')
 
     # Smart-merge: add the hook only if it is not already present.
+    #
+    # COMPARE RESOLVED PATHS, NOT RAW STRINGS. HOOK_PATH is built from $HOME and is
+    # therefore always absolute, while a settings file seeded from a template
+    # declares the same hook as `~/.local/share/...`. A string compare calls those
+    # two different hooks, the guard reports "not present", and the recorder ends
+    # up registered TWICE — firing twice on every tool use. Measured on the
+    # Oak-and-Wave image, which seeds the tilde form before this runs.
     local updated
-    updated=$(jq --argjson entry "$hook_entry" '
+    updated=$(jq --argjson entry "$hook_entry" --arg home "$HOME" "$JQ_RESOLVED"'
         # Ensure .hooks.PostToolUse is an array.
         .hooks //= {} |
         .hooks.PostToolUse //= [] |
         # Check if any existing matcher group already contains our command.
-        if (.hooks.PostToolUse | map(.hooks // [] | map(select(.command == $entry.hooks[0].command))) | flatten | length) > 0
+        if (.hooks.PostToolUse
+              | map(.hooks // [] | map(select(
+                    (.command | resolved($home)) == ($entry.hooks[0].command | resolved($home))
+                )))
+              | flatten | length) > 0
         then .
         else .hooks.PostToolUse += [$entry]
         end
@@ -168,8 +201,10 @@ do_check() {
 
     # Hook
     if [[ -f "$SETTINGS_FILE" ]] && \
-       jq -e --arg cmd "$HOOK_PATH" \
-          '.hooks.PostToolUse // [] | map(.hooks // [] | map(select(.command == $cmd))) | flatten | length > 0' \
+       jq -e --arg cmd "$HOOK_PATH" --arg home "$HOME" "$JQ_RESOLVED"'
+          .hooks.PostToolUse // []
+            | map(.hooks // [] | map(select((.command | resolved($home)) == ($cmd | resolved($home)))))
+            | flatten | length > 0' \
           "$SETTINGS_FILE" &>/dev/null; then
         ok "PostToolUse hook configured"
     else
@@ -215,13 +250,17 @@ do_uninstall() {
     # Remove hook from settings
     info "Removing PostToolUse hook from settings..."
     if [[ -f "$SETTINGS_FILE" ]]; then
+        # Resolve here too. A raw-string compare leaves a ~-spelled entry in place
+        # pointing at a script the uninstall then removes, so every tool call
+        # afterwards fails with "not found" — an uninstall that disagrees with its
+        # own installer leaves the user broken rather than merely untidy.
         local updated
-        updated=$(jq --arg cmd "$HOOK_PATH" '
+        updated=$(jq --arg cmd "$HOOK_PATH" --arg home "$HOME" "$JQ_RESOLVED"'
             if .hooks.PostToolUse then
                 # Remove any matcher group whose hooks array contains our command.
                 .hooks.PostToolUse |= map(
-                    if (.hooks // [] | map(select(.command == $cmd)) | length) > 0
-                    then .hooks |= map(select(.command != $cmd))
+                    if (.hooks // [] | map(select((.command | resolved($home)) == ($cmd | resolved($home)))) | length) > 0
+                    then .hooks |= map(select((.command | resolved($home)) != ($cmd | resolved($home))))
                     else .
                     end
                 ) |
@@ -249,9 +288,19 @@ do_uninstall() {
 # Main
 # ---------------------------------------------------------------------------
 
-case "${1:-}" in
-    --check)     do_check ;;
-    --uninstall) do_uninstall ;;
-    "")          do_install ;;
-    *)           die "Unknown flag: $1 (use --check or --uninstall)" ;;
-esac
+# Only dispatch when EXECUTED. Sourcing this file exposes its functions so a test
+# can drive the real `configure_hook` rather than a re-implementation of it — the
+# duplicate-registration bug lived in that jq program, so a test that reimplements
+# it would have agreed with the defect.
+# `curl … | bash` reads this script from STDIN, where BASH_SOURCE is unset —
+# under `set -u` a bare expansion aborts before dispatch, and the documented
+# install path is exactly that pipe. Default to $0 so the piped case dispatches
+# and a sourced caller (BASH_SOURCE = this file, $0 = the caller) still does not.
+if [[ "${BASH_SOURCE[0]:-$0}" == "${0}" ]]; then
+    case "${1:-}" in
+        --check)     do_check ;;
+        --uninstall) do_uninstall ;;
+        "")          do_install ;;
+        *)           die "Unknown flag: $1 (use --check or --uninstall)" ;;
+    esac
+fi
