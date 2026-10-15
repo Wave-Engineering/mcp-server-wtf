@@ -261,7 +261,7 @@ CREATE INDEX IF NOT EXISTS idx_distilled_not_noise ON distilled_entries(incident
 
 ## 5. MCP Tool Reference
 
-The MCP server (`index.ts`) registers three tools over stdio transport using `@modelcontextprotocol/sdk`. The server name is `wtf-server` version `1.4.2`.
+The MCP server (`index.ts`) registers three tools over stdio transport using `@modelcontextprotocol/sdk`. The server name is `wtf-server`. Its version is the one in `package.json`, mirrored in `index.ts` and bumped by each release-prep commit.
 
 ### 5.1 wtf_now
 
