@@ -17,7 +17,7 @@
   "author": "Wave Engineering",
   "dependencies": {
     "@anthropic-ai/bedrock-sdk": "^0.26.4",
-    "@modelcontextprotocol/sdk": "^1.12.1",
+    "@modelcontextprotocol/sdk": "^1.31.0",
     "@wave-engineering/mcp-logger": "^1.0.0"
   },
   "devDependencies": {
@@ -25,8 +25,9 @@
     "typescript": "^5.7.0"
   },
   "overrides": {
-    "fast-uri": "^3.1.5",
+    "fast-uri": "^3.1.7",
     "ip-address": "^10.3.1",
-    "express-rate-limit": "^8.6.2"
+    "express-rate-limit": "^8.6.2",
+    "proxy-addr": "^2.0.8"
   }
 }
